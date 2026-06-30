@@ -11,14 +11,18 @@ terraform {
   }
 }
 
+data "aws_caller_identity" "current" {}
+data "aws_partition" "current" {}
+
 locals {
+  bucket_name = "p0-transfers-${data.aws_caller_identity.current.account_id}"
   tags = {
     managed-by = "terraform"
   }
 }
 
 resource "aws_s3_bucket" "file_transfer" {
-  bucket = var.bucket_name
+  bucket = local.bucket_name
   tags   = local.tags
 }
 
@@ -52,6 +56,32 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "file_transfer" {
     }
     bucket_key_enabled = true
   }
+}
+
+resource "aws_s3_bucket_policy" "file_transfer" {
+  bucket = aws_s3_bucket.file_transfer.id
+  # Both resources mutate the same bucket; applying them in parallel can fail with a transient conflict, so force the access block to settle before we put the bucket policy.
+  depends_on = [aws_s3_bucket_public_access_block.file_transfer]
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.file_transfer.arn,
+          "${aws_s3_bucket.file_transfer.arn}/*",
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
+      },
+    ]
+  })
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "file_transfer" {

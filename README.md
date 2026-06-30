@@ -14,23 +14,45 @@ abort incomplete multipart uploads after one day.
 ## Usage
 
 ```terraform
-locals {
-  bucket_name = "p0-transfers-123456789012"
-}
-
 module "file_transfer_bucket" {
   source  = "p0-security/p0-file-transfer/aws"
   version = "0.1.0"
-
-  bucket_name = local.bucket_name
 }
 
 resource "p0_file_transfer" "main" {
-  account_id    = "123456789012"
+  account_id    = module.file_transfer_bucket.account_id
   bucket_name   = module.file_transfer_bucket.bucket_name
-  region        = "us-east-1"
-  aws_partition = "aws"
+  region        = module.file_transfer_bucket.region
+  aws_partition = module.file_transfer_bucket.aws_partition
   depends_on    = [module.file_transfer_bucket]
+}
+```
+
+For multi-account deployments, use a provider alias per account:
+
+```terraform
+provider "aws" {
+  alias  = "account_a"
+  region = "us-east-1"
+  assume_role { role_arn = "arn:aws:iam::111111111111:role/DeployRole" }
+}
+
+provider "aws" {
+  alias  = "account_b"
+  region = "us-east-1"
+  assume_role { role_arn = "arn:aws:iam::222222222222:role/DeployRole" }
+}
+
+module "file_transfer_account_a" {
+  source    = "p0-security/p0-file-transfer/aws"
+  version   = "0.1.0"
+  providers = { aws = aws.account_a }
+}
+
+module "file_transfer_account_b" {
+  source    = "p0-security/p0-file-transfer/aws"
+  version   = "0.1.0"
+  providers = { aws = aws.account_b }
 }
 ```
 
@@ -38,17 +60,17 @@ Run `terraform init` and `terraform apply`.
 
 ## Inputs
 
-| Name          | Description                                                              | Type     | Required |
-| ------------- | ------------------------------------------------------------------------ | -------- | :------: |
-| `bucket_name` | Name of the S3 bucket for P0 file transfers (DNS-style, no s3:// prefix) | `string` |   yes    |
+This module has no input variables. The bucket name is derived automatically from the AWS account ID of the caller.
 
 ## Outputs
 
-| Name          | Description                                                                       |
-| ------------- | --------------------------------------------------------------------------------- |
-| `bucket_id`   | The name of the file transfer S3 bucket                                           |
-| `bucket_arn`  | The ARN of the file transfer S3 bucket                                            |
-| `bucket_name` | The bucket name, for use as the `bucket_name` input to the `p0_file_transfer` resource |
+| Name            | Description                                                                               |
+| --------------- | ----------------------------------------------------------------------------------------- |
+| `bucket_name`   | The bucket name, for use as the `bucket_name` input to the `p0_file_transfer` resource   |
+| `bucket_arn`    | The ARN of the file transfer S3 bucket                                                    |
+| `account_id`    | The AWS account ID, for use as the `account_id` input to the `p0_file_transfer` resource |
+| `region`        | The AWS region, for use as the `region` input to the `p0_file_transfer` resource         |
+| `aws_partition` | The AWS partition, for use as the `aws_partition` input to the `p0_file_transfer` resource |
 
 ## Requirements
 
